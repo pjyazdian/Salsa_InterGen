@@ -4,6 +4,7 @@ GENERAL:
   LOG_DIR: ./checkpoints/Exp_Salsa_InterGen/log
 
 TRAIN:
+  USE_WANDB: True  # if False, use TensorBoard (log_dir under save_root)
   LR: 1e-4
   WEIGHT_DECAY: 0.00002
   BATCH_SIZE: 32

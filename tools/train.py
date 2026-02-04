@@ -7,7 +7,7 @@ from collections import OrderedDict
 from datasets import DataModule
 from configs import get_config
 from os.path import join as pjoin
-from torch.utils.tensorboard import SummaryWriter
+import wandb
 from models import *
 
 os.environ['PL_TORCH_DISTRIBUTED_BACKEND'] = 'nccl'
@@ -32,9 +32,14 @@ class LitTrainModel(pl.LightningModule):
         os.makedirs(self.meta_dir, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
 
-        self.model = model
+        self.use_wandb = getattr(self.cfg.TRAIN, 'USE_WANDB', True)
+        if not self.use_wandb:
+            from torch.utils.tensorboard import SummaryWriter
+            self.writer = SummaryWriter(self.log_dir)
+        else:
+            self.writer = None
 
-        self.writer = SummaryWriter(self.log_dir)
+        self.model = model
 
     def _configure_optim(self):
         optimizer = optim.AdamW(self.model.parameters(), lr=float(self.cfg.TRAIN.LR), weight_decay=self.cfg.TRAIN.WEIGHT_DECAY)
@@ -95,7 +100,14 @@ class LitTrainModel(pl.LightningModule):
             mean_loss = OrderedDict({})
             for tag, value in self.logs.items():
                 mean_loss[tag] = value / self.cfg.TRAIN.LOG_STEPS
-                self.writer.add_scalar(tag, mean_loss[tag], self.it)
+            if self.use_wandb:
+                # Log all losses (same as TensorBoard): with train/ prefix + canonical "loss" for WandB dashboard
+                wandb_dict = {f"train/{k}": v for k, v in mean_loss.items()}
+                wandb_dict["loss"] = mean_loss.get("total", 0.0)
+                wandb.log(wandb_dict, step=self.it)
+            else:
+                for tag, value in mean_loss.items():
+                    self.writer.add_scalar(tag, value, self.it)
             self.logs = OrderedDict()
             print_current_loss(self.start_time, self.it, mean_loss,
                                self.trainer.current_epoch,
@@ -155,6 +167,8 @@ if __name__ == '__main__':
         print("checkpoint state loaded!")
     litmodel = LitTrainModel(model, train_cfg)
 
+    if getattr(train_cfg.TRAIN, 'USE_WANDB', True):
+        wandb.init(project="intergen", name=train_cfg.GENERAL.EXP_NAME)
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath=litmodel.model_dir,
                                                        every_n_epochs=train_cfg.TRAIN.SAVE_EPOCH)
