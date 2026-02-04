@@ -128,10 +128,19 @@ def build_models(cfg):
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", type=str, default="interhuman", choices=["interhuman", "salsa"],
+                        help="Dataset to train on: interhuman (default) or salsa")
+    args, _ = parser.parse_known_args()
+
     print(os.getcwd())
     model_cfg = get_config("configs/model.yaml")
     train_cfg = get_config("configs/train.yaml")
-    data_cfg = get_config("configs/datasets.yaml").interhuman
+    if args.dataset == "salsa":
+        data_cfg = get_config("configs/datasets_salsa.yaml").salsa_train
+    else:
+        data_cfg = get_config("configs/datasets.yaml").interhuman
 
     datamodule = DataModule(data_cfg, train_cfg.TRAIN.BATCH_SIZE, train_cfg.TRAIN.NUM_WORKERS)
     model = build_models(model_cfg)

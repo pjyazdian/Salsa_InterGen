@@ -58,7 +58,7 @@ Then open the URL (e.g. `http://0.0.0.0:7860`). In **Ground truth**, choose data
 
 *(Add commands and notes here as you go.)*
 
-- **Training**: *TBD — integrate `SalsaInterGenDataset` into InterGen’s DataModule when dataset name is `salsa_intergen`.*
+- **Training**: From InterGen root run `python tools/train.py --dataset salsa`. Same model/config as base; ensure cache exists and `configs/datasets_salsa.yaml` DATA_ROOT points to `Salsa_utils/lmdb_salsa_intergen_cache`.*
 
 ---
 

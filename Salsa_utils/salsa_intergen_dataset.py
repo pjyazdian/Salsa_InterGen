@@ -189,3 +189,18 @@ def collate_salsa_intergen(batch: list[dict]) -> dict[str, Any]:
     out["audio_sr"] = batch[0].get("audio_sr", 24000)
     out["metadata"] = [s.get("metadata", {}) for s in batch]
     return out
+
+
+def collate_salsa_intergen_for_training(batch: list[dict]) -> tuple:
+    """
+    Collate Salsa dict batch into the tuple format expected by InterGen training:
+    (names, texts, motion1, motion2, motion_lens) — same as default_collate on
+    InterHumanDataset's (name, text, gt_motion1, gt_motion2, gt_length).
+    Use as DataLoader collate_fn when training with SalsaInterGenDataset.
+    """
+    names = [s["name"] for s in batch]
+    texts = [s["text"] for s in batch]
+    motion1 = torch.from_numpy(np.stack([s["motion1"] for s in batch])).float()
+    motion2 = torch.from_numpy(np.stack([s["motion2"] for s in batch])).float()
+    motion_lens = torch.tensor([s["gt_length"] for s in batch], dtype=torch.long)
+    return (names, texts, motion1, motion2, motion_lens)

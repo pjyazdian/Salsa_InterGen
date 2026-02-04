@@ -1,7 +1,7 @@
 GENERAL:
-  EXP_NAME: IG-S-8
-  CHECKPOINT: ./checkpoints
-  LOG_DIR: ./log
+  EXP_NAME: Salsa_InterGen
+  CHECKPOINT: ./checkpoints/Exp_Salsa_InterGen
+  LOG_DIR: ./checkpoints/Exp_Salsa_InterGen/log
 
 TRAIN:
   LR: 1e-4

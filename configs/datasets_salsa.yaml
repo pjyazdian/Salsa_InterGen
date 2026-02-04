@@ -3,7 +3,7 @@
 
 salsa_train:
     NAME: salsa_intergen
-    DATA_ROOT: ../path/to/salsa_intergen_cache  # path to cache LMDB directory
+    DATA_ROOT: Salsa_utils/lmdb_salsa_intergen_cache  # from InterGen root; create with salsa_intergen_cache.py
     MOTION_REP: global
     MODE: train
     CACHE: True
@@ -14,7 +14,7 @@ salsa_train:
 
 salsa_val:
     NAME: salsa_intergen
-    DATA_ROOT: ../path/to/salsa_intergen_cache
+    DATA_ROOT: Salsa_utils/lmdb_salsa_intergen_cache
     MOTION_REP: global
     MODE: val
     CACHE: True
@@ -23,7 +23,7 @@ salsa_val:
 
 salsa_test:
     NAME: salsa_intergen
-    DATA_ROOT: ../path/to/salsa_intergen_cache
+    DATA_ROOT: Salsa_utils/lmdb_salsa_intergen_cache
     MOTION_REP: global
     MODE: test
     CACHE: True
