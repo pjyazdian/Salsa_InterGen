@@ -1,0 +1,31 @@
+# Salsa dataset: cache LMDB from salsa_intergen_cache.py (run from Baselines/Salsa_InterGen)
+# Build cache first: python -m Salsa_utils.salsa_intergen_cache --source_lmdb <path> --out_lmdb <path>
+
+salsa_train:
+    NAME: salsa_intergen
+    DATA_ROOT: ../path/to/salsa_intergen_cache  # path to cache LMDB directory
+    MOTION_REP: global
+    MODE: train
+    CACHE: True
+    MAX_GT_LENGTH: 300
+    MIN_GT_LENGTH: 15
+    # Optional: split file (one sample name per line, must match cache "name" field)
+    # SPLIT_DIR: ../path/to/splits
+
+salsa_val:
+    NAME: salsa_intergen
+    DATA_ROOT: ../path/to/salsa_intergen_cache
+    MOTION_REP: global
+    MODE: val
+    CACHE: True
+    MAX_GT_LENGTH: 300
+    # SPLIT_DIR: ../path/to/splits
+
+salsa_test:
+    NAME: salsa_intergen
+    DATA_ROOT: ../path/to/salsa_intergen_cache
+    MOTION_REP: global
+    MODE: test
+    CACHE: True
+    MAX_GT_LENGTH: 300
+    # SPLIT_DIR: ../path/to/splits

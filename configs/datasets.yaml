@@ -1,20 +1,21 @@
+# InterHuman data: use Baselines/InterHuman_DATASET (run from Baselines/Salsa_InterGen)
 interhuman:
     NAME: interhuman
-    DATA_ROOT: ./data/interhuman_processed
+    DATA_ROOT: ../InterHuman_DATASET
     MOTION_REP: global
     MODE: train
     CACHE: True
 
 interhuman_val:
     NAME: interhuman
-    DATA_ROOT: ./data/interhuman_processed
+    DATA_ROOT: ../InterHuman_DATASET
     MOTION_REP: global
     MODE: val
     CACHE: True
 
 interhuman_test:
     NAME: interhuman
-    DATA_ROOT: ./data/interhuman_processed
+    DATA_ROOT: ../InterHuman_DATASET
     MOTION_REP: global
     MODE: test
     CACHE: True

@@ -6,3 +6,11 @@ venv
 evaluation_*
 cache
 eval_model
+
+# Dataset / cache (LMDB) – do not commit
+*.mdb
+**/lmdb_salsa_intergen_cache/
+data/motions_processed/
+
+# Skip .md files (optional: remove this block if you want to commit README etc.)
+# *.md
