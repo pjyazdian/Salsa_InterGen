@@ -72,6 +72,9 @@ class LitTrainModel(pl.LightningModule):
         self.it = self.cfg.TRAIN.LAST_ITER if self.cfg.TRAIN.LAST_ITER else 0
         self.epoch = self.cfg.TRAIN.LAST_EPOCH if self.cfg.TRAIN.LAST_EPOCH else 0
         self.logs = OrderedDict()
+        # Init wandb only on rank 0 so metrics are recorded (DDP-safe)
+        if self.use_wandb and self.trainer.global_rank == 0:
+            wandb.init(project="intergen", name=self.cfg.GENERAL.EXP_NAME, reinit=True)
 
 
     def training_step(self, batch, batch_idx):
@@ -96,14 +99,16 @@ class LitTrainModel(pl.LightningModule):
                 self.logs[k] += v.item()
 
         self.it += 1
-        if self.it % self.cfg.TRAIN.LOG_STEPS == 0 and self.device.index == 0:
+        if self.it % self.cfg.TRAIN.LOG_STEPS == 0 and self.trainer.global_rank == 0:
             mean_loss = OrderedDict({})
             for tag, value in self.logs.items():
                 mean_loss[tag] = value / self.cfg.TRAIN.LOG_STEPS
             if self.use_wandb:
-                # Log all losses (same as TensorBoard): with train/ prefix + canonical "loss" for WandB dashboard
+                # Log all losses (same as TensorBoard): train/ prefix + loss + epoch/step so metrics show in WandB
                 wandb_dict = {f"train/{k}": v for k, v in mean_loss.items()}
                 wandb_dict["loss"] = mean_loss.get("total", 0.0)
+                wandb_dict["epoch"] = self.trainer.current_epoch
+                wandb_dict["step"] = self.it
                 wandb.log(wandb_dict, step=self.it)
             else:
                 for tag, value in mean_loss.items():
@@ -166,9 +171,6 @@ if __name__ == '__main__':
         model.load_state_dict(ckpt["state_dict"], strict=True)
         print("checkpoint state loaded!")
     litmodel = LitTrainModel(model, train_cfg)
-
-    if getattr(train_cfg.TRAIN, 'USE_WANDB', True):
-        wandb.init(project="intergen", name=train_cfg.GENERAL.EXP_NAME)
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(dirpath=litmodel.model_dir,
                                                        every_n_epochs=train_cfg.TRAIN.SAVE_EPOCH)
