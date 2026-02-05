@@ -72,6 +72,8 @@ class LitTrainModel(pl.LightningModule):
         self.it = self.cfg.TRAIN.LAST_ITER if self.cfg.TRAIN.LAST_ITER else 0
         self.epoch = self.cfg.TRAIN.LAST_EPOCH if self.cfg.TRAIN.LAST_EPOCH else 0
         self.logs = OrderedDict()
+        self.epoch_logs = OrderedDict()
+        self.epoch_logs_count = 0
         # Init wandb only on rank 0 so metrics are recorded (DDP-safe)
         if self.use_wandb and self.trainer.global_rank == 0:
             wandb.init(project="intergen", name=self.cfg.GENERAL.EXP_NAME, reinit=True)
@@ -104,12 +106,14 @@ class LitTrainModel(pl.LightningModule):
             for tag, value in self.logs.items():
                 mean_loss[tag] = value / self.cfg.TRAIN.LOG_STEPS
             if self.use_wandb:
-                # Log all losses (same as TensorBoard): train/ prefix + loss + epoch/step so metrics show in WandB
+                # Train section: per-iteration metrics (same as base code), step = iteration
                 wandb_dict = {f"train/{k}": v for k, v in mean_loss.items()}
                 wandb_dict["loss"] = mean_loss.get("total", 0.0)
-                wandb_dict["epoch"] = self.trainer.current_epoch
-                wandb_dict["step"] = self.it
                 wandb.log(wandb_dict, step=self.it)
+                # Accumulate for epoch-level log (once per epoch in on_train_epoch_end)
+                for k, v in mean_loss.items():
+                    self.epoch_logs[k] = self.epoch_logs.get(k, 0.0) + v
+                self.epoch_logs_count += 1
             else:
                 for tag, value in mean_loss.items():
                     self.writer.add_scalar(tag, value, self.it)
@@ -122,7 +126,14 @@ class LitTrainModel(pl.LightningModule):
 
 
     def on_train_epoch_end(self):
-        # pass
+        # Epoch section: log once per epoch (averages over the epoch), step = epoch
+        if self.use_wandb and self.trainer.global_rank == 0 and self.epoch_logs_count > 0:
+            epoch_mean = OrderedDict((k, v / self.epoch_logs_count) for k, v in self.epoch_logs.items())
+            wandb_dict_epoch = {f"epoch/{k}": v for k, v in epoch_mean.items()}
+            wandb_dict_epoch["epoch/loss"] = epoch_mean.get("total", 0.0)
+            wandb.log(wandb_dict_epoch, step=self.trainer.current_epoch)
+            self.epoch_logs = OrderedDict()
+            self.epoch_logs_count = 0
         sch = self.lr_schedulers()
         if sch is not None:
             sch.step()
