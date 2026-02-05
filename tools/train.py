@@ -77,6 +77,9 @@ class LitTrainModel(pl.LightningModule):
         # Init wandb only on rank 0 so metrics are recorded (DDP-safe)
         if self.use_wandb and self.trainer.global_rank == 0:
             wandb.init(project="intergen", name=self.cfg.GENERAL.EXP_NAME, reinit=True)
+            wandb.define_metric("train/*", step_metric="iter_step")
+            wandb.define_metric("loss", step_metric="iter_step")
+            wandb.define_metric("epoch/*", step_metric="epoch_step")
 
 
     def training_step(self, batch, batch_idx):
@@ -106,10 +109,11 @@ class LitTrainModel(pl.LightningModule):
             for tag, value in self.logs.items():
                 mean_loss[tag] = value / self.cfg.TRAIN.LOG_STEPS
             if self.use_wandb:
-                # Train section: per-iteration metrics (same as base code), step = iteration
+                # Train section: per-iteration metrics, x-axis = iter_step
                 wandb_dict = {f"train/{k}": v for k, v in mean_loss.items()}
                 wandb_dict["loss"] = mean_loss.get("total", 0.0)
-                wandb.log(wandb_dict, step=self.it)
+                wandb_dict["iter_step"] = self.it
+                wandb.log(wandb_dict)
                 # Accumulate for epoch-level log (once per epoch in on_train_epoch_end)
                 for k, v in mean_loss.items():
                     self.epoch_logs[k] = self.epoch_logs.get(k, 0.0) + v
@@ -126,12 +130,13 @@ class LitTrainModel(pl.LightningModule):
 
 
     def on_train_epoch_end(self):
-        # Epoch section: log once per epoch (averages over the epoch), step = epoch
+        # Epoch section: log once per epoch (averages), x-axis = epoch_step
         if self.use_wandb and self.trainer.global_rank == 0 and self.epoch_logs_count > 0:
             epoch_mean = OrderedDict((k, v / self.epoch_logs_count) for k, v in self.epoch_logs.items())
             wandb_dict_epoch = {f"epoch/{k}": v for k, v in epoch_mean.items()}
             wandb_dict_epoch["epoch/loss"] = epoch_mean.get("total", 0.0)
-            wandb.log(wandb_dict_epoch, step=self.trainer.current_epoch)
+            wandb_dict_epoch["epoch_step"] = self.trainer.current_epoch
+            wandb.log(wandb_dict_epoch)
             self.epoch_logs = OrderedDict()
             self.epoch_logs_count = 0
         sch = self.lr_schedulers()
