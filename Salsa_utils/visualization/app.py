@@ -45,6 +45,26 @@ except ImportError:
 SALSA_CACHE_DIR = os.path.join(INTERGEN_ROOT, "Salsa_utils", "lmdb_salsa_intergen_cache")
 SALSA_SOURCE_LMDB = os.path.normpath(os.path.join(INTERGEN_ROOT, "..", "..", "Salsa-Agent", "dataset_processed_New", "lmdb_Salsa_pair", "lmdb_train"))
 
+# Directories to search for .ckpt files (relative to INTERGEN_ROOT); add more to list as needed
+CHECKPOINT_SEARCH_DIRS = ["checkpoints_org", "checkpoints"]
+
+
+def discover_checkpoints():
+    """Return list of (label, path) for dropdown: label = path relative to INTERGEN_ROOT, path = absolute."""
+    found = []
+    for rel_dir in CHECKPOINT_SEARCH_DIRS:
+        base = os.path.join(INTERGEN_ROOT, rel_dir)
+        if not os.path.isdir(base):
+            continue
+        for root, _, files in os.walk(base):
+            for f in files:
+                if f.endswith(".ckpt"):
+                    full = os.path.join(root, f)
+                    rel = os.path.relpath(full, INTERGEN_ROOT)
+                    found.append((rel, full))
+    found.sort(key=lambda x: x[0])
+    return found
+
 
 def _salsa_cache_exists():
     """True if cache dir exists and has at least one LMDB entry."""
@@ -286,27 +306,38 @@ def load_gt_sample(index_str, dataset_choice="InterHuman", seed_for_reproduce=Tr
 
 
 # ---------------------------------------------------------------------------
-# Inference (lazy model load)
+# Inference (lazy model load; checkpoint selectable via dropdown)
 # ---------------------------------------------------------------------------
 _litmodel = None
 _model_cfg = None
 _infer_cfg = None
+_loaded_ckpt_path = None
 
 
-def get_litmodel():
-    global _litmodel, _model_cfg, _infer_cfg
-    if _litmodel is not None:
+def get_litmodel(ckpt_path=None):
+    """Load model, using ckpt_path if given else config CHECKPOINT. Reloads when ckpt_path changes."""
+    global _litmodel, _model_cfg, _infer_cfg, _loaded_ckpt_path
+    path_to_load = (ckpt_path or "").strip() or None
+    if path_to_load is None:
+        _model_cfg = get_config("configs/model.yaml")
+        path_to_load = getattr(_model_cfg, "CHECKPOINT", None)
+        if path_to_load and not os.path.isabs(path_to_load):
+            path_to_load = os.path.join(INTERGEN_ROOT, path_to_load)
+    if _litmodel is not None and _loaded_ckpt_path == path_to_load:
         return _litmodel, None
     try:
-        _model_cfg = get_config("configs/model.yaml")
+        if _model_cfg is None:
+            _model_cfg = get_config("configs/model.yaml")
         _infer_cfg = get_config("configs/infer.yaml")
         model = InterGen(_model_cfg)
-        if _model_cfg.CHECKPOINT and os.path.exists(_model_cfg.CHECKPOINT):
-            ckpt = torch.load(_model_cfg.CHECKPOINT, map_location="cpu")
-            for k in list(ckpt.get("state_dict", {}).keys()) or []:
+        if path_to_load and os.path.exists(path_to_load):
+            ckpt = torch.load(path_to_load, map_location="cpu")
+            state = ckpt.get("state_dict", {}) or {}
+            for k in list(state.keys()):
                 if "model." in k:
-                    ckpt["state_dict"][k.replace("model.", "")] = ckpt["state_dict"].pop(k)
-            model.load_state_dict(ckpt["state_dict"], strict=False)
+                    state[k.replace("model.", "")] = state.pop(k)
+            model.load_state_dict(state, strict=False)
+        _loaded_ckpt_path = path_to_load
         _litmodel = _LitGenModelWrapper(model, _infer_cfg)
         _litmodel.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
         return _litmodel, None
@@ -353,8 +384,8 @@ class _LitGenModelWrapper:
         return [sequences[0], sequences[1]]
 
 
-def run_inference(prompt, window_size_str):
-    """Run pretrained InterGen on a text prompt. Returns (video_path, error_msg)."""
+def run_inference(prompt, window_size_str, ckpt_path=None):
+    """Run InterGen on a text prompt using the selected checkpoint. Returns (video_path, error_msg)."""
     if not (prompt or "").strip():
         return None, "Enter a text prompt."
     try:
@@ -362,7 +393,7 @@ def run_inference(prompt, window_size_str):
         window_size = max(15, min(300, window_size))
     except ValueError:
         window_size = 210
-    litmodel, err = get_litmodel()
+    litmodel, err = get_litmodel(ckpt_path=ckpt_path)
     if err:
         return None, f"Model load error: {err}"
     try:
@@ -407,20 +438,29 @@ def build_ui():
 
             # ----- Tab 2: Inference -----
             with gr.TabItem("Inference"):
-                gr.Markdown("Generate two-person motion from a text prompt using the pretrained InterGen model.")
+                gr.Markdown("Generate two-person motion from a text prompt. Choose which checkpoint to use (found under `checkpoints_org/` and `checkpoints/`).")
+                ckpt_choices = discover_checkpoints()
+                if not ckpt_choices:
+                    ckpt_choices = [("Config default", "")]
+                inf_ckpt = gr.Dropdown(
+                    choices=[(label, path) for label, path in ckpt_choices],
+                    value=ckpt_choices[0][1],
+                    label="Checkpoint",
+                    allow_custom_value=False,
+                )
                 inf_prompt = gr.Textbox(label="Text prompt", placeholder="e.g. Two people embrace each other.")
                 inf_window = gr.Number(value=210, label="Window size (frames)", precision=0)
                 inf_btn = gr.Button("Generate")
                 inf_video = gr.Video(label="Generated motion")
                 inf_error = gr.Textbox(label="Message", interactive=False, visible=True)
 
-                def do_inference(p, w):
-                    v, e = run_inference(p, str(int(w)) if w is not None else "210")
+                def do_inference(p, w, ckpt):
+                    v, e = run_inference(p, str(int(w)) if w is not None else "210", ckpt_path=ckpt)
                     return v, e or ""
 
                 inf_btn.click(
                     fn=do_inference,
-                    inputs=[inf_prompt, inf_window],
+                    inputs=[inf_prompt, inf_window, inf_ckpt],
                     outputs=[inf_video, inf_error],
                 )
 
@@ -437,7 +477,7 @@ def build_ui():
 
 def main():
     demo = build_ui()
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    demo.launch(server_name="0.0.0.0", server_port=7861)
 
 
 if __name__ == "__main__":
