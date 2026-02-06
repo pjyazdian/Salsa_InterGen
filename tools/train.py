@@ -6,6 +6,7 @@ import torch.optim as optim
 from collections import OrderedDict
 from datasets import DataModule
 from configs import get_config
+import os
 from os.path import join as pjoin
 import wandb
 from models import *
@@ -172,6 +173,12 @@ if __name__ == '__main__':
     train_cfg = get_config("configs/train.yaml")
     if args.dataset == "salsa":
         data_cfg = get_config("configs/datasets_salsa.yaml").salsa_train
+        cache_dir = data_cfg.DATA_ROOT if os.path.isabs(data_cfg.DATA_ROOT) else os.path.abspath(data_cfg.DATA_ROOT)
+        data_dir = os.path.join(os.getcwd(), "data")
+        from Salsa_utils.salsa_intergen_cache import ensure_salsa_global_stats
+        ensure_salsa_global_stats(cache_dir, data_dir)
+        os.environ["INTERGEN_GLOBAL_MEAN"] = os.path.join(data_dir, "global_mean_salsa.npy")
+        os.environ["INTERGEN_GLOBAL_STD"] = os.path.join(data_dir, "global_std_salsa.npy")
     else:
         data_cfg = get_config("configs/datasets.yaml").interhuman
 

@@ -87,10 +87,17 @@ def rigid_transform(relative, data):
     return data
 
 
+def _normalizer_paths():
+    mean = os.environ.get("INTERGEN_GLOBAL_MEAN") or "./data/global_mean.npy"
+    std = os.environ.get("INTERGEN_GLOBAL_STD") or "./data/global_std.npy"
+    return mean, std
+
+
 class MotionNormalizer():
     def __init__(self):
-        mean = np.load("./data/global_mean.npy")
-        std = np.load("./data/global_std.npy")
+        mean_path, std_path = _normalizer_paths()
+        mean = np.load(mean_path)
+        std = np.load(std_path)
 
         self.motion_mean = mean
         self.motion_std = std
@@ -108,8 +115,9 @@ class MotionNormalizer():
 
 class MotionNormalizerTorch():
     def __init__(self):
-        mean = np.load("./data/global_mean.npy")
-        std = np.load("./data/global_std.npy")
+        mean_path, std_path = _normalizer_paths()
+        mean = np.load(mean_path)
+        std = np.load(std_path)
 
         self.motion_mean = torch.from_numpy(mean).float()
         self.motion_std = torch.from_numpy(std).float()

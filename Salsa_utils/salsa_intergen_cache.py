@@ -109,6 +109,49 @@ def _get_annotations_for_window(
     return out
 
 
+SALSA_MEAN_FNAME = "global_mean_salsa.npy"
+SALSA_STD_FNAME = "global_std_salsa.npy"
+
+
+def compute_and_save_salsa_global_stats(cache_lmdb_dir: str, data_dir: str) -> None:
+    """Compute mean/std (262-d) over all valid frames from both persons.
+    Same 262-d stats are applied per person in the model; motion2 is already
+    aligned to leader (rigid transform) in the cache."""
+    os.makedirs(data_dir, exist_ok=True)
+    env = lmdb.open(cache_lmdb_dir, readonly=True, lock=False)
+    n_dim = 262
+    total_sum = np.zeros(n_dim, dtype=np.float64)
+    total_sq = np.zeros(n_dim, dtype=np.float64)
+    total_count = 0
+    with env.begin(write=False) as txn:
+        cursor = txn.cursor()
+        for _key, value in cursor:
+            sample = pyarrow.deserialize(value)
+            m1 = np.asarray(sample["motion1"], dtype=np.float64)[: int(sample["gt_length"])]
+            m2 = np.asarray(sample["motion2"], dtype=np.float64)[: int(sample["gt_length"])]
+            for block in (m1, m2):
+                total_sum += block.sum(axis=0)
+                total_sq += (block ** 2).sum(axis=0)
+                total_count += block.shape[0]
+    env.close()
+    if total_count == 0:
+        return
+    mean = (total_sum / total_count).astype(np.float32)
+    var = np.maximum(total_sq / total_count - mean.astype(np.float64) ** 2, 0.0)
+    std = np.sqrt(var).astype(np.float32)
+    np.save(os.path.join(data_dir, SALSA_MEAN_FNAME), mean)
+    np.save(os.path.join(data_dir, SALSA_STD_FNAME), std)
+    print(f"Saved Salsa global mean/std (262-d) to {data_dir}")
+
+
+def ensure_salsa_global_stats(cache_lmdb_dir: str, data_dir: str) -> None:
+    """If global_mean_salsa.npy does not exist, compute from cache and save."""
+    mean_path = os.path.join(data_dir, SALSA_MEAN_FNAME)
+    if os.path.isfile(mean_path):
+        return
+    compute_and_save_salsa_global_stats(cache_lmdb_dir, data_dir)
+
+
 def run(
     source_lmdb_dir: str,
     out_lmdb_dir: str,
@@ -284,6 +327,10 @@ def run(
     env_dst.sync()
     env_dst.close()
     print(f"Wrote {n_out} samples to {out_lmdb_dir}")
+
+    # Salsa global mean/std (same folder as InterGen's data/global_*.npy)
+    data_dir = os.path.join(_INTERGEN_ROOT, "data")
+    compute_and_save_salsa_global_stats(out_lmdb_dir, data_dir)
 
 
 def main():
