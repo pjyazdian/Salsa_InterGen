@@ -48,6 +48,10 @@ SALSA_SOURCE_LMDB = os.path.normpath(os.path.join(INTERGEN_ROOT, "..", "..", "Sa
 # Directories to search for .ckpt files (relative to INTERGEN_ROOT); add more to list as needed
 CHECKPOINT_SEARCH_DIRS = ["checkpoints_org", "checkpoints"]
 
+# Salsa global mean/std (used when a Salsa-trained checkpoint is selected)
+SALSA_MEAN_PATH = os.path.join(INTERGEN_ROOT, "data", "global_mean_salsa.npy")
+SALSA_STD_PATH = os.path.join(INTERGEN_ROOT, "data", "global_std_salsa.npy")
+
 
 def discover_checkpoints():
     """Return list of (label, path) for dropdown: label = path relative to INTERGEN_ROOT, path = absolute."""
@@ -312,19 +316,44 @@ _litmodel = None
 _model_cfg = None
 _infer_cfg = None
 _loaded_ckpt_path = None
+_loaded_salsa_stats = None  # True if current model/wrapper use Salsa mean/std
+
+
+def _is_salsa_checkpoint(ckpt_path):
+    """True if this checkpoint is Salsa-trained (use Salsa global mean/std for denorm)."""
+    if not ckpt_path:
+        return False
+    path = os.path.normpath(ckpt_path)
+    root = os.path.normpath(INTERGEN_ROOT)
+    if not path.startswith(root):
+        return "salsa" in path.lower()
+    rel = os.path.relpath(path, root)
+    return "checkpoints" in rel and "checkpoints_org" not in rel
+
+
+def _apply_normalizer_env(use_salsa):
+    """Set INTERGEN_GLOBAL_MEAN/STD so MotionNormalizer uses Salsa or default stats."""
+    if use_salsa and os.path.isfile(SALSA_MEAN_PATH) and os.path.isfile(SALSA_STD_PATH):
+        os.environ["INTERGEN_GLOBAL_MEAN"] = SALSA_MEAN_PATH
+        os.environ["INTERGEN_GLOBAL_STD"] = SALSA_STD_PATH
+    else:
+        os.environ.pop("INTERGEN_GLOBAL_MEAN", None)
+        os.environ.pop("INTERGEN_GLOBAL_STD", None)
 
 
 def get_litmodel(ckpt_path=None):
-    """Load model, using ckpt_path if given else config CHECKPOINT. Reloads when ckpt_path changes."""
-    global _litmodel, _model_cfg, _infer_cfg, _loaded_ckpt_path
+    """Load model, using ckpt_path if given else config CHECKPOINT. Reloads when ckpt_path or Salsa vs default stats change."""
+    global _litmodel, _model_cfg, _infer_cfg, _loaded_ckpt_path, _loaded_salsa_stats
     path_to_load = (ckpt_path or "").strip() or None
     if path_to_load is None:
         _model_cfg = get_config("configs/model.yaml")
         path_to_load = getattr(_model_cfg, "CHECKPOINT", None)
         if path_to_load and not os.path.isabs(path_to_load):
             path_to_load = os.path.join(INTERGEN_ROOT, path_to_load)
-    if _litmodel is not None and _loaded_ckpt_path == path_to_load:
+    use_salsa = _is_salsa_checkpoint(path_to_load)
+    if _litmodel is not None and _loaded_ckpt_path == path_to_load and _loaded_salsa_stats == use_salsa:
         return _litmodel, None
+    _apply_normalizer_env(use_salsa)
     try:
         if _model_cfg is None:
             _model_cfg = get_config("configs/model.yaml")
@@ -338,6 +367,7 @@ def get_litmodel(ckpt_path=None):
                     state[k.replace("model.", "")] = state.pop(k)
             model.load_state_dict(state, strict=False)
         _loaded_ckpt_path = path_to_load
+        _loaded_salsa_stats = use_salsa
         _litmodel = _LitGenModelWrapper(model, _infer_cfg)
         _litmodel.to(torch.device("cuda:0" if torch.cuda.is_available() else "cpu"))
         return _litmodel, None

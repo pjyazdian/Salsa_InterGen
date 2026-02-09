@@ -54,11 +54,49 @@ Then open the URL (e.g. `http://0.0.0.0:7860`). In **Ground truth**, choose data
 
 ---
 
-## 3. Other commands and instructions
+## 3. Training
+
+From the InterGen root:
+
+```bash
+python tools/train.py --dataset salsa
+```
+
+Use the same model/config as the base InterGen setup. Ensure the cache exists and `configs/datasets_salsa.yaml` has `DATA_ROOT` pointing to `Salsa_utils/lmdb_salsa_intergen_cache`.
+
+### Recorded metrics
+
+**Training (WandB / TensorBoard)** — all are losses (lower is better):
+
+| Metric | Meaning |
+|--------|--------|
+| **total** | Sum of all motion losses; main training objective. |
+| **simple** | Masked L1/L2 between predicted and target normalized motion (raw diffusion target). |
+| **RO** | Relative orientation: mismatch between the two people’s facing directions. Keeps interaction orientation correct. |
+| **DM** | Distance map: MSE between predicted and target inter-person joint distance matrices (only for joints &lt; 1 m apart). Enforces proximity/contact. |
+| **JA** | Joint affinity: penalizes predicted inter-person distances where the target has close joints; keeps interaction geometry. |
+| **POSE_0 / POSE_1** | Local joint positions per person. Pose accuracy. |
+| **VEL_0 / VEL_1** | Joint velocity error per person. Temporal smoothness. |
+| **FC_0 / FC_1** | Foot contact: feet velocity when grounded. Reduces foot sliding. |
+| **BL_0 / BL_1** | Bone length error per person. Keeps skeleton rigid. |
+| **TR_0 / TR_1** | Root (pelvis) XZ trajectory. Global translation. |
+| **text_ce_from_motion**, **text_ce_from_d**, **text_mixed_ce** | Text–motion embedding alignment (evaluator); cross-entropy losses. |
+
+**Offline evaluation** (`tools/eval.py`):
+
+| Metric | Meaning | Direction |
+|--------|--------|-----------|
+| **MM Distance** | Mean distance between text and motion embeddings (same index). | Lower = better text–motion match. |
+| **R_precision** | For each text, fraction of times the correct motion is in the top-k nearest. | Higher = better retrieval. |
+| **FID** | Frechét distance between distributions of motion embeddings (GT vs generated). | Lower = generated motions closer to real distribution. |
+| **Diversity** | Mean pairwise distance between generated motion embeddings. | Higher = more variety (avoids mode collapse). |
+| **MultiModality** | For the same text, mean pairwise distance between multiple generated motions. | Higher = more diverse motions per prompt. |
+
+---
+
+## 4. Other commands and instructions
 
 *(Add commands and notes here as you go.)*
-
-- **Training**: From InterGen root run `python tools/train.py --dataset salsa`. Same model/config as base; ensure cache exists and `configs/datasets_salsa.yaml` DATA_ROOT points to `Salsa_utils/lmdb_salsa_intergen_cache`.*
 
 ---
 
